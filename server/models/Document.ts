@@ -52,6 +52,7 @@ import type {
   SourceMetadata,
 } from "@shared/types";
 import { DocumentPreferenceDefaults } from "@shared/constants";
+import { ProsemirrorDataHelper } from "@shared/utils/ProsemirrorDataHelper";
 import { ProsemirrorHelper } from "@shared/utils/ProsemirrorHelper";
 import { UrlHelper } from "@shared/utils/UrlHelper";
 import slugify from "@shared/utils/slugify";
@@ -488,6 +489,11 @@ class Document extends ArchivableModel<
     );
   }
 
+  /** Whether the document has no content yet. */
+  get isEmpty() {
+    return !this.content || ProsemirrorDataHelper.isEmpty(this.content);
+  }
+
   /**
    * Returns the key used to store the collaborators of a document in Redis.
    * @param documentId The ID of the document.
@@ -510,6 +516,22 @@ class Document extends ArchivableModel<
     return `/doc/${slugifiedTitle}-${urlId}`;
   }
 
+  /**
+   * Whether a pending change to the content makes the document go from empty
+   * to not empty, or back.
+   *
+   * @param model The document with unsaved changes.
+   * @returns True if the change flips whether the document is empty.
+   */
+  static emptinessChanged(model: Document) {
+    if (!model.changed("content")) {
+      return false;
+    }
+    const previous = model.previous("content");
+    const wasEmpty = !previous || ProsemirrorDataHelper.isEmpty(previous);
+    return wasEmpty !== model.isEmpty;
+  }
+
   // hooks
 
   @BeforeSave
@@ -525,7 +547,8 @@ class Document extends ArchivableModel<
       !(
         model.changed("title") ||
         model.changed("icon") ||
-        model.changed("color")
+        model.changed("color") ||
+        Document.emptinessChanged(model)
       ) ||
       !model.collectionId
     ) {
@@ -1614,6 +1637,7 @@ class Document extends ArchivableModel<
             "urlId",
             "icon",
             "color",
+            "content",
             "parentDocumentId",
           ],
           where: {
@@ -1666,6 +1690,7 @@ class Document extends ArchivableModel<
     url: this.url,
     icon: isNil(this.icon) ? undefined : this.icon,
     color: isNil(this.color) ? undefined : this.color,
+    isEmpty: this.isEmpty,
     children,
   });
 

@@ -296,7 +296,8 @@ export default class Collection extends ParanoidModel {
    */
   @action
   updateDocument(
-    document: Pick<Document, "id" | "title" | "url" | "color" | "icon">
+    document: Pick<Document, "id" | "title" | "url" | "color" | "icon"> &
+      Partial<Pick<Document, "isEmpty">>
   ) {
     if (!this.documents) {
       return;
@@ -309,6 +310,9 @@ export default class Collection extends ParanoidModel {
           node.icon = document.icon ?? undefined;
           node.title = document.title;
           node.url = document.url;
+          if (document.isEmpty !== undefined) {
+            node.isEmpty = document.isEmpty;
+          }
         } else {
           travelNodes(node.children);
         }

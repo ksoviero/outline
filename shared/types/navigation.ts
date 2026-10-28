@@ -15,6 +15,8 @@ export type NavigationNode = {
   icon?: string;
   color?: string;
   children: NavigationNode[];
+  /** Whether the document has no content yet. */
+  isEmpty?: boolean;
   isDraft?: boolean;
   collectionId?: string;
   type?: NavigationNodeType;

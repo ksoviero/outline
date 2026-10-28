@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { EmptyResultError, Op, QueryTypes } from "sequelize";
 import { CollectionPermission, DocumentPermission } from "@shared/types";
+import { ProsemirrorDataHelper } from "@shared/utils/ProsemirrorDataHelper";
 import slugify from "@shared/utils/slugify";
 import { parser } from "@server/editor";
+import Collection from "@server/models/Collection";
 import Document from "@server/models/Document";
 import {
   buildDocument,
@@ -185,6 +187,30 @@ describe("#save", () => {
     expect(rows.searchVector).toMatch(/'origin':\d+C/);
     expect(rows.searchVector).toContain(tokens[0]);
   });
+
+  it("should update the collection structure when content is added or cleared", async () => {
+    const document = await buildDocument({
+      content: ProsemirrorDataHelper.getEmpty(),
+    });
+    const findNode = async () => {
+      const collection = await Collection.findByPk(document.collectionId!, {
+        includeDocumentStructure: true,
+        rejectOnEmpty: true,
+      });
+      return collection.documentStructure?.find(
+        (node) => node.id === document.id
+      );
+    };
+    expect((await findNode())?.isEmpty).toBe(true);
+
+    document.content = parser.parse("Some text")!.toJSON();
+    await document.save();
+    expect((await findNode())?.isEmpty).toBe(false);
+
+    document.content = ProsemirrorDataHelper.getEmpty();
+    await document.save();
+    expect((await findNode())?.isEmpty).toBe(true);
+  });
 });
 
 describe("#findAllChildDocumentIds", () => {
@@ -356,9 +382,31 @@ describe("#toNavigationNode", () => {
         url: grandchild.url,
         icon: undefined,
         color: undefined,
+        isEmpty: false,
         children: [],
       },
     ]);
+  });
+
+  it("should mark children that have no content as empty", async () => {
+    const collection = await buildCollection();
+    const props = {
+      teamId: collection.teamId,
+      collectionId: collection.id,
+    };
+    const root = await buildDocument(props);
+    const empty = await buildDocument({
+      ...props,
+      parentDocumentId: root.id,
+      content: ProsemirrorDataHelper.getEmpty(),
+    });
+
+    const node = await root.toNavigationNode();
+
+    expect(node.isEmpty).toBe(false);
+    expect(node.children.find((child) => child.id === empty.id)?.isEmpty).toBe(
+      true
+    );
   });
 
   it("should only include archived children when requested", async () => {

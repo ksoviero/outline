@@ -2,7 +2,8 @@ import { Node } from "prosemirror-model";
 import { prosemirrorToYDoc } from "y-prosemirror";
 import { schema } from "@server/editor";
 import { createContext } from "@server/context";
-import { Document, Event, Revision } from "@server/models";
+import { ProsemirrorDataHelper } from "@shared/utils/ProsemirrorDataHelper";
+import { Collection, Document, Event, Revision } from "@server/models";
 import { buildDocument, buildUser } from "@server/test/factories";
 import documentCollaborativeUpdater from "./documentCollaborativeUpdater";
 
@@ -230,5 +231,50 @@ describe("documentCollaborativeUpdater", () => {
       "Kept edit"
     );
     ydoc.destroy();
+  });
+
+  it("records in the collection structure when the document stops or starts being empty", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      teamId: user.teamId,
+      userId: user.id,
+      content: ProsemirrorDataHelper.getEmpty(),
+    });
+    const findNode = async () => {
+      const collection = await Collection.findByPk(document.collectionId!, {
+        includeDocumentStructure: true,
+        rejectOnEmpty: true,
+      });
+      return collection.documentStructure?.find(
+        (node) => node.id === document.id
+      );
+    };
+    expect((await findNode())?.isEmpty).toBe(true);
+
+    const filled = buildYDoc([
+      { type: "paragraph", content: [{ type: "text", text: "Now with text" }] },
+    ]);
+    await documentCollaborativeUpdater({
+      documentId: document.id,
+      ydoc: filled,
+      collaborators: { ids: [user.id] },
+      isLastConnection: true,
+      clientVersion: null,
+    });
+    expect((await findNode())?.isEmpty).toBe(false);
+    filled.destroy();
+
+    const emptied = buildYDoc([{ type: "paragraph" }]);
+    await documentCollaborativeUpdater({
+      documentId: document.id,
+      ydoc: emptied,
+      collaborators: { ids: [user.id] },
+      isLastConnection: true,
+      clientVersion: null,
+    });
+    const node = await findNode();
+    expect(node?.isEmpty).toBe(true);
+    expect(node?.title).toBe(document.title);
+    emptied.destroy();
   });
 });

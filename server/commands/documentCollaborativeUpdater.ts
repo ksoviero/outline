@@ -7,10 +7,11 @@ import type { ProsemirrorData } from "@shared/types";
 import { toError } from "@shared/utils/error";
 import { schema } from "@server/editor";
 import Logger from "@server/logging/Logger";
-import { Document, Event } from "@server/models";
+import { Collection, Document, Event } from "@server/models";
 import { sequelize } from "@server/storage/database";
 import { AuthenticationType } from "@server/types";
 import semver from "semver";
+import { Transaction } from "sequelize";
 
 interface Props {
   /** The document ID to update. */
@@ -73,9 +74,14 @@ export default async function documentCollaborativeUpdater({
       attributes: [
         "id",
         "title",
+        "urlId",
+        "icon",
+        "color",
         "content",
         "collaboratorIds",
         "collectionId",
+        "publishedAt",
+        "archivedAt",
         "deletedAt",
         "editorVersion",
         "lastModifiedById",
@@ -128,6 +134,8 @@ export default async function documentCollaborativeUpdater({
           ? clientVersion
           : document.editorVersion;
 
+    const wasEmpty = document.isEmpty;
+
     await document.update(
       {
         content,
@@ -146,6 +154,23 @@ export default async function documentCollaborativeUpdater({
         hooks: false,
       }
     );
+
+    // The collection structure records whether each document is empty, and
+    // the hook that keeps it current is skipped above.
+    if (
+      wasEmpty !== document.isEmpty &&
+      document.collectionId &&
+      document.publishedAt &&
+      !document.archivedAt &&
+      !isDeleted
+    ) {
+      const collection = await Collection.findByPk(document.collectionId, {
+        includeDocumentStructure: true,
+        transaction,
+        lock: Transaction.LOCK.NO_KEY_UPDATE,
+      });
+      await collection?.updateDocument(document, { transaction });
+    }
 
     transaction.afterCommit(async () => {
       try {

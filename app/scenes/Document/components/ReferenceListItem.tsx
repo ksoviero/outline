@@ -309,7 +309,7 @@ function ReferenceListItem({
             {icon ? (
               <Icon value={icon} color={color ?? undefined} initial={initial} />
             ) : (
-              <DocumentIcon />
+              <DocumentIcon outline={!!document.isEmpty} />
             )}
           </DocumentIconWrapper>
         </IconWrapper>

@@ -240,6 +240,10 @@ export default class Document extends ArchivableModel implements Searchable {
   @observable
   urlId: string;
 
+  /** Whether the document has no content yet. */
+  @observable
+  isEmpty: boolean;
+
   @observable
   tasks: {
     completed: number;
